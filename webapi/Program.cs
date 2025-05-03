@@ -1,15 +1,41 @@
+using MassTransit;
+using Microsoft.EntityFrameworkCore;
+using webapi.Data;
+using webapi.Sagas;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase("Database"));
+
+builder.Services.AddMassTransit(options =>
+{
+    options.SetKebabCaseEndpointNameFormatter();
+    
+    options.AddConsumers(typeof(Program).Assembly);
+    
+    options.UsingRabbitMq((context, config) =>
+    {
+        config.Host("localhost", "/", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
+        config.ConfigureEndpoints(context);
+    });
+    
+    options.AddSagaStateMachine<OrderProcessingSaga, OrderProcessingSagaData>()
+        .InMemoryRepository();
+});
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
