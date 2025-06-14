@@ -8,7 +8,6 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
     public State Pending { get; set; }
     public State ReservingInventory { get; set; }
     public State ProcessingPayment { get; set; }
-    // public State Completed { get; set; }
     
     public Event<OrderCreated> OrderCreatedEvent { get; set; }
     public Event<InventoryReserved> InventoryReservedEvent { get; set; }
@@ -33,11 +32,7 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                     context.Saga.OrderCreated = true;
                 })
                 .TransitionTo(Pending)
-                .ThenAsync(async context =>
-                {
-                    await context.Send(new ReserveInventory(context.Message.OrderId, "Laptop", 1));
-                }));
-                // .Publish(context => new ReserveInventory(context.Message.OrderId, "Laptop", 1)));
+                .Publish(context => new ReserveInventory(context.Message.OrderId, "Laptop", 1)));
 
         During(Pending,
             When(InventoryReservedEvent)
@@ -48,11 +43,7 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                     context.Saga.InventoryReserved = true;
                 })
                 .TransitionTo(ReservingInventory)
-                .ThenAsync(async context =>
-                {
-                    await context.Send(new ChargePayment(context.Message.OrderId, context.Saga.TotalAmount));
-                }));
-                // .Publish(context => new ChargePayment(context.Message.OrderId, context.Saga.TotalAmount)));
+                .Publish(context => new ChargePayment(context.Message.OrderId, context.Saga.TotalAmount)));
 
 
         During(ReservingInventory,
@@ -64,12 +55,5 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                 })
                 .TransitionTo(ProcessingPayment)
                 .Finalize());
-            
-        // During(ReservingInventory, 
-        //     When(PaymentSucceededEvent)
-        //         .Then(context => context.Saga.InventoryReserved = true)
-        //         .TransitionTo(ProcessingPayment)
-        //         .Publish(context => new ChargePayment(context.Message.OrderId, context.Message.Amount))
-        //         .Finalize());
     }
 }
