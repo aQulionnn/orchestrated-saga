@@ -11,22 +11,33 @@ public class CreateOrderHandler(AppDbContext dbContext) : IConsumer<CreateOrder>
     
     public async Task Consume(ConsumeContext<CreateOrder> context)
     {
-        var order = await _dbContext.Orders.AddAsync(new Order
+        var order = new Order
         {
             Id = Guid.NewGuid(),
             CustomerName = context.Message.CustomerName,
             TotalAmount = context.Message.TotalAmount,
-            CreatedAt = context.Message.CreatedAt,
-        });
+            CreatedAt = context.Message.CreatedAt
+        };
         
-        await _dbContext.SaveChangesAsync();
-
-        await context.Publish(new OrderCreated
+        try
         {
-            OrderId = order.Entity.Id,
-            CustomerName = order.Entity.CustomerName,
-            TotalAmount = order.Entity.TotalAmount,
-            CreatedAt = order.Entity.CreatedAt
-        });
+            await _dbContext.Orders.AddAsync(order);
+            await _dbContext.SaveChangesAsync();
+
+            await context.Publish(new OrderCreated
+            {
+                OrderId = order.Id,
+                CustomerName = order.CustomerName,
+                TotalAmount = order.TotalAmount,
+                CreatedAt = order.CreatedAt
+            });
+        }
+        catch (Exception e)
+        {
+            await context.Publish(new OrderCreationFailed
+            {
+                OrderId = order.Id,
+            });
+        }
     }
 }

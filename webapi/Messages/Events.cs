@@ -8,6 +8,11 @@ public class OrderCreated
     public DateTime CreatedAt { get; set; }
 }
 
+public class OrderCreationFailed
+{
+    public Guid OrderId { get; set; }
+}
+
 public class InventoryReserved
 {
     public Guid OrderId { get; init; }

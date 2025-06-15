@@ -8,8 +8,11 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
     public State Pending { get; set; }
     public State ReservingInventory { get; set; }
     public State ProcessingPayment { get; set; }
+    public State Compensating { get; set; }
+    public State Failed { get; set; }
     
     public Event<OrderCreated> OrderCreatedEvent { get; set; }
+    public Event<OrderCreationFailed> OrderCreationFailedEvent { get; set; }
     public Event<InventoryReserved> InventoryReservedEvent { get; set; }
     public Event<PaymentSucceeded> PaymentSucceededEvent { get; set; }
 
@@ -18,9 +21,11 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
         InstanceState(x => x.CurrentState);
         
         Event(() => OrderCreatedEvent, e => e.CorrelateById(m => m.Message.OrderId));
+        Event(() =>  OrderCreationFailedEvent, e => e.CorrelateById(m => m.Message.OrderId));
+        
         Event(() => InventoryReservedEvent, e => e.CorrelateById(m => m.Message.OrderId));
         Event(() => PaymentSucceededEvent, e => e.CorrelateById(m => m.Message.OrderId));
-
+        
         Initially(
             When(OrderCreatedEvent)
                 .Then(context =>
@@ -32,8 +37,11 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                     context.Saga.OrderCreated = true;
                 })
                 .TransitionTo(Pending)
-                .Publish(context => new ReserveInventory(context.Message.OrderId, "Laptop", 1)));
-
+                .Publish(context => new ReserveInventory(context.Message.OrderId, "Laptop", 1)),
+            When(OrderCreationFailedEvent)
+                .TransitionTo(Failed)
+                .Finalize());
+        
         During(Pending,
             When(InventoryReservedEvent)
                 .Then(context =>
@@ -44,8 +52,7 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                 })
                 .TransitionTo(ReservingInventory)
                 .Publish(context => new ChargePayment(context.Message.OrderId, context.Saga.TotalAmount)));
-
-
+        
         During(ReservingInventory,
             When(PaymentSucceededEvent)
                 .Then(context =>
@@ -54,6 +61,25 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                     context.Saga.Amount = context.Message.Amount;
                 })
                 .TransitionTo(ProcessingPayment)
+                .Finalize());
+
+        DuringAny(
+            When(OrderCreationFailedEvent)
+                .If(context => context.Saga.OrderCreated, x => x
+                    .TransitionTo(Compensating)
+                    .Publish(context => new CancelOrder(context.Saga.OrderId)))
+                .If(context => !context.Saga.OrderCreated, x => x
+                    .TransitionTo(Failed)
+                    .Finalize()
+                ));
+        
+        During(Compensating,
+            When(OrderCreationFailedEvent)
+                .Then(context =>
+                {
+                    context.Saga.OrderCreated = false;
+                })
+                .TransitionTo(Failed)
                 .Finalize());
     }
 }
