@@ -24,6 +24,8 @@ public class CreateOrderHandler(AppDbContext dbContext) : IConsumer<CreateOrder>
             await _dbContext.Orders.AddAsync(order);
             await _dbContext.SaveChangesAsync();
 
+            // throw new Exception();
+            
             await context.Publish(new OrderCreated
             {
                 OrderId = order.Id,
@@ -34,7 +36,7 @@ public class CreateOrderHandler(AppDbContext dbContext) : IConsumer<CreateOrder>
         }
         catch (Exception e)
         {
-            await context.Publish(new OrderCreationFailed
+            await context.Publish(new OrderCancelled
             {
                 OrderId = order.Id,
             });

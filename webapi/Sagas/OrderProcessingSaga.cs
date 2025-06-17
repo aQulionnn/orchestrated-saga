@@ -12,8 +12,9 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
     public State Failed { get; set; }
     
     public Event<OrderCreated> OrderCreatedEvent { get; set; }
-    public Event<OrderCreationFailed> OrderCreationFailedEvent { get; set; }
+    public Event<OrderCancelled> OrderCancelledEvent { get; set; }
     public Event<InventoryReserved> InventoryReservedEvent { get; set; }
+    public Event<InventoryReleased> InventoryReleasedEvent { get; set; }
     public Event<PaymentSucceeded> PaymentSucceededEvent { get; set; }
 
     public OrderProcessingSaga()
@@ -21,11 +22,13 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
         InstanceState(x => x.CurrentState);
         
         Event(() => OrderCreatedEvent, e => e.CorrelateById(m => m.Message.OrderId));
-        Event(() =>  OrderCreationFailedEvent, e => e.CorrelateById(m => m.Message.OrderId));
+        Event(() => OrderCancelledEvent, e => e.CorrelateById(m => m.Message.OrderId));
         
         Event(() => InventoryReservedEvent, e => e.CorrelateById(m => m.Message.OrderId));
-        Event(() => PaymentSucceededEvent, e => e.CorrelateById(m => m.Message.OrderId));
+        Event(() => InventoryReleasedEvent, e => e.CorrelateById(m => m.Message.InventoryId));
         
+        Event(() => PaymentSucceededEvent, e => e.CorrelateById(m => m.Message.OrderId));
+
         Initially(
             When(OrderCreatedEvent)
                 .Then(context =>
@@ -38,10 +41,14 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                 })
                 .TransitionTo(Pending)
                 .Publish(context => new ReserveInventory(context.Message.OrderId, "Laptop", 1)),
-            When(OrderCreationFailedEvent)
-                .TransitionTo(Failed)
+            When(OrderCancelledEvent)
+                .Then(context =>
+                {
+                    context.Saga.OrderId = context.Message.OrderId;
+                })
+                .Publish(context => new CancelOrder(context.Message.OrderId))
                 .Finalize());
-        
+
         During(Pending,
             When(InventoryReservedEvent)
                 .Then(context =>
@@ -51,7 +58,14 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                     context.Saga.InventoryReserved = true;
                 })
                 .TransitionTo(ReservingInventory)
-                .Publish(context => new ChargePayment(context.Message.OrderId, context.Saga.TotalAmount)));
+                .Publish(context => new ChargePayment(context.Message.OrderId, context.Saga.TotalAmount)),
+            When(InventoryReleasedEvent)
+                .Then(context =>
+                {
+                    context.Saga.InventoryId = context.Message.InventoryId;
+                })
+                .Publish(context => new ReleaseInventory(context.Message.InventoryId))
+                .Finalize());
         
         During(ReservingInventory,
             When(PaymentSucceededEvent)
@@ -62,24 +76,14 @@ public class OrderProcessingSaga : MassTransitStateMachine<OrderProcessingSagaDa
                 })
                 .TransitionTo(ProcessingPayment)
                 .Finalize());
-
-        DuringAny(
-            When(OrderCreationFailedEvent)
-                .If(context => context.Saga.OrderCreated, x => x
-                    .TransitionTo(Compensating)
-                    .Publish(context => new CancelOrder(context.Saga.OrderId)))
-                .If(context => !context.Saga.OrderCreated, x => x
-                    .TransitionTo(Failed)
-                    .Finalize()
-                ));
         
         During(Compensating,
-            When(OrderCreationFailedEvent)
+            When(InventoryReleasedEvent)
                 .Then(context =>
                 {
-                    context.Saga.OrderCreated = false;
+                    context.Saga.InventoryReleased = true;
                 })
-                .TransitionTo(Failed)
+                .Publish(context => new CancelOrder(context.Saga.OrderId))
                 .Finalize());
     }
 }

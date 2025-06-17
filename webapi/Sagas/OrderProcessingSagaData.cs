@@ -10,6 +10,8 @@ public class OrderProcessingSagaData : SagaStateMachineInstance
     public Guid OrderId { get; set; }
     public required string CustomerName { get; set; }
     
+    public Guid InventoryId { get; set; }
+    
     public required string ProductName { get; set; }
     public int Quantity { get; set; }
     public double TotalAmount { get; set; }
@@ -20,4 +22,7 @@ public class OrderProcessingSagaData : SagaStateMachineInstance
     public bool OrderCreated { get; set; }
     public bool InventoryReserved { get; set; }
     public bool PaymentCompleted { get; set; }
+    
+    public bool OrderCancelled { get; set; }
+    public bool InventoryReleased { get; set; }
 }

@@ -14,7 +14,7 @@ public class CancelOrderHandler(AppDbContext dbContext) : IConsumer<CancelOrder>
         _dbContext.Orders.Remove(order);
         await _dbContext.SaveChangesAsync();
 
-        await context.Publish(new OrderCreationFailed
+        await context.Publish(new OrderCancelled
         {
             OrderId = order.Id
         });
